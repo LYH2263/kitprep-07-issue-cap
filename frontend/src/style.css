@@ -169,3 +169,28 @@ th { color: var(--kp-muted); font-weight: 700; font-size: 0.75rem; }
 .stat { font-size: 1.5rem; font-weight: 800; }
 
 .tree ul { list-style: none; padding-left: 1.2rem; margin: 0.25rem 0; }
+
+.kp-banner {
+  background: #f6d8d2;
+  border: 2px solid var(--kp-bad);
+  border-radius: 2px;
+  color: var(--kp-ink);
+  padding: 0.6rem 0.85rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.3);
+}
+.kp-banner strong { color: var(--kp-bad); }
+.kp-banner ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+
+.kp-limit-input {
+  width: 6.5rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--kp-steel);
+  border-radius: 2px;
+  font-size: 0.85rem;
+  background: #fff;
+  color: var(--kp-ink);
+}
+.kp-flash-ok { color: var(--kp-ok); font-size: 0.8rem; margin: 0 0 0.5rem; }
+.kp-flash-err { color: var(--kp-bad); font-size: 0.8rem; margin: 0 0 0.5rem; }
