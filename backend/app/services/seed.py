@@ -10,18 +10,19 @@ def seed_if_empty(db: Session) -> None:
     for code, name in dishes:
         d = Dish(code=code, name=name, portion_unit="份")
         db.add(d); db.flush(); dish_ids[code] = d.id
+    # (code, name, unit, stock, daily_limit)；daily_limit=0 表示不按当日上限拦截
     ings = [
-        ("I-PR", "五花肉", "kg", 8.0),
-        ("I-EG", "茄子", "kg", 3.0),
-        ("I-CK", "鸡肉", "kg", 5.0),
-        ("I-RC", "大米", "kg", 20.0),
-        ("I-ND", "面条", "kg", 4.0),
-        ("I-SC", "生抽", "L", 2.0),
-        ("I-OL", "食用油", "L", 1.5),
+        ("I-PR", "五花肉", "kg", 8.0, 10.0),
+        ("I-EG", "茄子", "kg", 3.0, 0.0),
+        ("I-CK", "鸡肉", "kg", 5.0, 0.0),
+        ("I-RC", "大米", "kg", 20.0, 0.0),
+        ("I-ND", "面条", "kg", 4.0, 0.0),
+        ("I-SC", "生抽", "L", 2.0, 0.0),
+        ("I-OL", "食用油", "L", 1.5, 0.0),
     ]
     ing_ids = {}
-    for code, name, unit, stock in ings:
-        i = Ingredient(code=code, name=name, unit=unit, stock_qty=stock)
+    for code, name, unit, stock, daily_limit in ings:
+        i = Ingredient(code=code, name=name, unit=unit, stock_qty=stock, daily_limit=daily_limit)
         db.add(i); db.flush(); ing_ids[code] = i.id
     bom = [
         ("D-HS", "I-PR", 0.25), ("D-HS", "I-RC", 0.15), ("D-HS", "I-SC", 0.02), ("D-HS", "I-OL", 0.03),

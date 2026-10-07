@@ -1,38 +1,55 @@
-import json
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.models import BomLine, Ingredient, KitchenOrder, OrderLine, PrepRun
-from app.services.bom_engine import explode_and_merge, result_to_dict
+from app.services import prep_service
 router = APIRouter(prefix="/prep", tags=["prep"])
 
+def _bdate(business_date: date | None) -> date:
+    return business_date or date.today()
+
 @router.post("/run")
-def run_prep(order_id: int = 1, db: Session = Depends(get_db)):
-    order = db.get(KitchenOrder, order_id)
-    if not order: raise HTTPException(404, "订单不存在")
-    ols = [{"dish_id": l.dish_id, "portions": l.portions}
-           for l in db.scalars(select(OrderLine).where(OrderLine.order_id == order_id)).all()]
-    bom = [{"dish_id": b.dish_id, "ingredient_id": b.ingredient_id, "qty_per_portion": b.qty_per_portion}
-           for b in db.scalars(select(BomLine)).all()]
-    ings = {i.id: {"code": i.code, "name": i.name, "unit": i.unit, "stock_qty": i.stock_qty}
-            for i in db.scalars(select(Ingredient)).all()}
-    result = result_to_dict(explode_and_merge(ols, bom, ings))
-    result["order"] = {"id": order.id, "code": order.code, "outlet": order.outlet}
-    run = PrepRun(order_id=order_id, created_at=datetime.utcnow(), result_json=json.dumps(result, ensure_ascii=False))
-    db.add(run); db.commit(); db.refresh(run)
-    return {"id": run.id, **result}
+def run_prep(order_id: int = 1,
+             business_date: date | None = Query(default=None),
+             db: Session = Depends(get_db)):
+    """生成备料单：触顶整组失败，已写行全部回滚、占用退回、未备不挂、结存不变。"""
+    try:
+        return prep_service.generate_prep(db, order_id, _bdate(business_date))
+    except prep_service.OrderNotFound:
+        raise HTTPException(404, "订单不存在")
+    except prep_service.CapExceeded as exc:
+        # 只写「当日可领已满」，不得写成「结存不够」
+        raise HTTPException(409, {"message": prep_service.CAP_FULL_MESSAGE,
+                                  "violations": exc.violations})
+
+@router.get("/preview")
+def preview(order_id: int = 1,
+            business_date: date | None = Query(default=None),
+            db: Session = Depends(get_db)):
+    """只读试算：需求、当日已占、按现上限是否触顶，绝不写账。"""
+    try:
+        return prep_service.preview_snapshot(db, order_id, _bdate(business_date))
+    except prep_service.OrderNotFound:
+        raise HTTPException(404, "订单不存在")
 
 @router.get("/latest")
-def latest(order_id: int = 1, db: Session = Depends(get_db)):
-    run = db.scalars(select(PrepRun).where(PrepRun.order_id == order_id).order_by(PrepRun.id.desc())).first()
-    if not run:
-        return run_prep(order_id=order_id, db=db)
-    data = json.loads(run.result_json)
-    return {"id": run.id, **data}
+def latest(order_id: int = 1,
+           business_date: date | None = Query(default=None),
+           db: Session = Depends(get_db)):
+    """只读：当日最近一张备料单；没有就返回空账本，绝不代为生成。"""
+    return prep_service.latest_snapshot(db, order_id, _bdate(business_date))
 
 @router.get("/shortages")
-def shortages(order_id: int = 1, db: Session = Depends(get_db)):
-    data = latest(order_id=order_id, db=db)
-    return {"order_id": order_id, "shortages": data.get("shortages", []), "stats": data.get("stats", {})}
+def shortages(order_id: int = 1,
+              business_date: date | None = Query(default=None),
+              db: Session = Depends(get_db)):
+    """只读未备账本：只来自整组成功的备料单挂账。"""
+    data = prep_service.latest_snapshot(db, order_id, _bdate(business_date))
+    return {"order_id": order_id, "business_date": data["business_date"],
+            "unprep": data["unprep"], "stats": data["stats"]}
+
+@router.get("/occupancy")
+def occupancy(business_date: date | None = Query(default=None),
+              db: Session = Depends(get_db)):
+    """只读：当日各原料已占/上限/剩余，备料台与库存页同口径。"""
+    return prep_service.occupancy_snapshot(db, _bdate(business_date))
